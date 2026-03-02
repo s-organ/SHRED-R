@@ -1,0 +1,138 @@
+library(dplyr)
+library(simstudy)
+library(tidyverse)
+library(MASS)
+library(data.table)
+
+
+# Single common component correlation .... ####
+
+p = 300
+n = 1000
+k = 100
+rho = 0.5 
+
+X <- genCorGen(n,p,params1 = c(rep(0,p)), params2 = c(rep(1,p)), rho = rho, dist = "normal", corstr = "cs")
+
+X <- X %>% dplyr::select(id, X) %>% as.data.frame()
+sim_data2 = data.frame(matrix(ncol = p, nrow = n))
+ls <- list()
+for(i in 1:n){
+  ls[[i]] <- unlist(c(X[X$id == i,2]))
+  names(ls[[i]]) = NULL
+  sim_data2[i,] = ls[[i]]
+}
+
+X = sim_data2 %>% as.matrix()
+
+nonzero = sample(p, k)
+bs = rnorm(nonzero,0,1)
+beta = rep(0,p)
+beta[nonzero] = bs
+y = X %*% beta + rnorm(n)
+
+true = nonzero
+
+
+# AR(1) correlation .... ######
+
+p = 300
+n = 1000
+k = 100
+
+mat = genCorMat(nvars = p, rho = 0.6, corstr = "ar1")
+
+X <- genCorGen(n,p,params1 = c(rep(0,p)), params2 = c(rep(1,p)), corMatrix = mat , dist = "normal")
+
+X <- X %>% dplyr::select(id, X) %>% as.data.frame()
+sim_data2 = data.frame(matrix(ncol = p, nrow = n))
+ls <- list()
+for(i in 1:n){
+  ls[[i]] <- unlist(c(X[X$id == i,2]))
+  names(ls[[i]]) = NULL
+  sim_data2[i,] = ls[[i]]
+}
+
+X = sim_data2 %>% as.matrix()
+
+nonzero = sample(p, k)
+bs = rnorm(nonzero,0,1)
+beta = rep(0,p)
+beta[nonzero] = bs
+y = X %*% beta + rnorm(n)
+
+true = nonzero
+
+# Clustered correlation .... ####
+
+
+p <- 300
+n <- 1000
+k <- 100
+
+
+base_sizes <- c(5, 10, 15)
+sizes <- c()
+
+while(sum(sizes) + min(base_sizes) <= p){
+  sizes <- c(sizes, base_sizes)
+}
+
+if(sum(sizes) < p){
+  sizes <- c(sizes, p - sum(sizes))
+}
+
+K <- length(sizes)
+
+set.seed(1)
+rho_k <- runif(K, min = 0.3, max = 0.6)
+
+Sigma <- matrix(0, p, p)
+
+start <- 1
+for(j in 1:K){
+  
+  m <- sizes[j]
+  end <- start + m - 1
+  
+  block <- matrix(rho_k[j], m, m)
+  diag(block) <- 1
+  
+  Sigma[start:end, start:end] <- block
+  start <- end + 1
+}
+
+
+X <- MASS::mvrnorm(n, mu = rep(0, p), Sigma = Sigma)
+
+nonzero <- sample(p, k)
+beta <- rep(0, p)
+beta[nonzero] <- rnorm(k, 0, 1)
+
+y <- X %*% beta + rnorm(n)
+
+true = nonzero
+
+# optional..., poisson and logistic .... ######
+
+# if logistic 
+
+eta <- X %*% beta
+
+prob <- 1 / (1 + exp(-eta))
+
+y <- rbinom(n, size = 1, prob = prob)
+
+# if poisson
+
+eta <- as.vector(X %*% beta)
+
+eta <- eta / sd(eta)
+
+eta <- -1 + signal_strength * eta
+
+lambda <- exp(eta)
+
+y <- rpois(n, lambda)
+
+
